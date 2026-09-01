@@ -12,6 +12,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Gate;
+use Liberu\Billing\Invoicing\Actions\ApplyInvoiceLateFee;
 use Liberu\Billing\Invoicing\Actions\CreatePaymentPlan;
 use Liberu\Billing\Invoicing\Actions\DeliverInvoice;
 use Liberu\Billing\Invoicing\Actions\FinalizeInvoice;
@@ -28,6 +29,8 @@ final class InvoiceResource extends Resource
     protected static ?string $model = Invoice::class;
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-document-text';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Billing Operations';
 
     public static function form(Schema $schema): Schema
     {
@@ -52,6 +55,10 @@ final class InvoiceResource extends Resource
             Action::make('paymentPlan')->label('Payment plan')->visible(fn (Invoice $record): bool => $record->getRawOriginal('status') === 'finalized')->form([TextInput::make('total_installments')->integer()->minValue(2)->required(), TextInput::make('frequency')->datalist(['weekly', 'monthly', 'quarterly'])->required()])->action(function (Invoice $record, array $data): void {
                 Gate::authorize('update', $record);
                 app(CreatePaymentPlan::class)->execute($record, (int) $data['total_installments'], $data['frequency']);
+            }),
+            Action::make('lateFee')->label('Apply late fee')->visible(fn (Invoice $record): bool => $record->getRawOriginal('status') === 'finalized' && $record->due_at?->isPast())->form([TextInput::make('amount_minor')->integer()->minValue(1)->required()])->action(function (Invoice $record, array $data): void {
+                Gate::authorize('update', $record);
+                app(ApplyInvoiceLateFee::class)->execute($record, (int) $data['amount_minor']);
             }),
         ])->defaultSort('id', 'desc');
     }
